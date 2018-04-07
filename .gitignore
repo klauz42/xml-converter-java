@@ -2,7 +2,8 @@
 *.class
 
 # Log file
-*.log
+*log*
+log/*
 
 # BlueJ files
 *.ctxt
@@ -26,5 +27,12 @@ hs_err_pid*
 .idea/*
 
 #Task files
-*.docx
+*.docx*
 *.xml
+
+#input/output files
+data/in/*
+data/out/*
+
+#Demo classes
+*Demo*
