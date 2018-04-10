@@ -17,7 +17,7 @@ import java.util.logging.Logger;
 public class CRMWriter {
 
     public static final Logger LOGGER =
-            Logger.getLogger(LogDemo.class.getName());
+            Logger.getLogger(CRMWriter.class.getName());
 
 
     private static final SimpleDateFormat crmTimeFormat = new SimpleDateFormat("yyyy-MM-dd'T'hh:mm:ss'Z'");
