@@ -20,7 +20,7 @@ import java.util.logging.Logger;
 public class ESBParser {
 
     public static final Logger LOGGER =
-            Logger.getLogger(LogDemo.class.getName());
+            Logger.getLogger(ESBParser.class.getName());
 
 
     private Node esbRoot;
