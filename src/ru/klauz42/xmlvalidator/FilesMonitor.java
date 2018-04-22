@@ -9,13 +9,19 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
 import java.text.ParseException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class FilesMonitor {
 
-    public static final Logger LOGGER =
+    private Map<Path, FileActions> actionMap = new HashMap<>();
+
+    private enum FileActions { DELETE, MOVE, TRYAGAIN, STOP, OK, SOBIG}
+
+    private static final Logger LOGGER =
             Logger.getLogger(FilesMonitor.class.getName());
 
     private Path rqDir;
@@ -28,55 +34,43 @@ public class FilesMonitor {
         this.dlqDir = dlqDir;
     }
 
-    private void createAction(WatchEvent event, WatchService watchService) {
-        String fileName = event.context().toString();
-        String absolutePathToFile = rqDir.toAbsolutePath().toString() +
-                File.separator + fileName;
+    private FileActions createAction(Path inFile) {
         //try в try, т.к. при исключении приложение должно закрыться,
         //файл перемещается в dlq, это действие обрабатывается во втором try-блоке
-        try {
-            try {
-                ESBParser.ESBObj o = new ESBParser(absolutePathToFile).parseESBXMLToESBObj();
-                CRMWriter writer = new CRMWriter(o,
-                        rsDir.toAbsolutePath() + File.separator + fileName.substring(0,
-                                fileName.length() - 4) + "Rs.xml");
-                writer.WriteXML();
-                LOGGER.fine(fileName + " has been successfully saved");
-            } catch (SAXException e) {
-                LOGGER.log(Level.SEVERE, "Uploaded file is not XML, SAXException occurred", e);
-                throw e;
-            } catch (ParseException |
-                    IOException |
-                    ParserConfigurationException |
-                    TransformerException |
-                    ESBParser.ESBFormatException e) {
-                LOGGER.log(Level.SEVERE, e.getClass().getName() + " occurred", e);
-                throw e;
-            }
-        } catch (Exception exc) {
-            Path inFile = Paths.get(absolutePathToFile);
-            moveFileToDlq(absolutePathToFile, watchService);
+        String fileName = inFile.getFileName().toString();
+        FileActions action = null;
+        if (!checkFileUpload(inFile, 4, 10, 500)) return FileActions.SOBIG;
+        else try {
+            ESBParser.ESBObj o = new ESBParser(inFile.toAbsolutePath().toString()).parseESBXMLToESBObj();
+            CRMWriter writer = new CRMWriter(o,
+                    rsDir.toAbsolutePath() + File.separator + fileName.substring(0,
+                            fileName.length() - 4) + "Rs.xml");
+            writer.WriteXML();
+            LOGGER.fine(fileName + " has been successfully saved");
+            return FileActions.OK;
+        } catch (SAXException e) {
+            LOGGER.log(Level.SEVERE, "Uploaded file is not XML, SAXException occurred", e);
+            return FileActions.MOVE;
+        } catch (ParseException |
+                IOException |
+                ParserConfigurationException |
+                TransformerException |
+                ESBParser.ESBFormatException e) {
+            LOGGER.log(Level.SEVERE, e.getClass().getName() + " occurred", e);
+            return FileActions.MOVE;
         }
     }
 
     //переместить файл в dlq и закрыть приложение
-    private void moveFileToDlq(String absolutePathToFile, WatchService watchService) {
-        Path inFile = Paths.get(absolutePathToFile);
+    private FileActions moveFileToDlq(Path inFile) {
         Path dlqFile = Paths.get(dlqDir.toAbsolutePath() + File.separator + inFile.getFileName());
         try {
             Files.move(inFile, dlqFile, StandardCopyOption.REPLACE_EXISTING);
             LOGGER.info(inFile.getFileName() + " has been moved to dlq");
+            return FileActions.OK;
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "IOException occurred while moving " + inFile.getFileName(), e);
-        } finally {
-            try {
-                watchService.close();
-            } catch (IOException e) {
-                LOGGER.log(Level.SEVERE, "IOException occurred while moving " + inFile.getFileName(), e);
-            } finally {
-                LOGGER.info("Stopping of program");
-                System.exit(1);
-            }
+            return FileActions.MOVE;
         }
     }
 
@@ -86,14 +80,13 @@ public class FilesMonitor {
     sleepTime - время между проверками в мс
     !!!максимальное время выполнения проверки больше, чем (needAttempts-1)*maxLooops*sleepTime/1000 c
      */
-    private boolean checkFileUpload(String pathToFile, int needAttemps, int maxLoops, long sleepTime) {
-        File file = new File(pathToFile);
-        int successAttempts;
+    private boolean checkFileUpload(Path pathToFile, int attempCount, int maxLoops, long sleepTime) {
+        File file = new File(pathToFile.toAbsolutePath().toString());
         if(!file.exists()) return false;
         for (int i = 0; i < maxLoops; i++) {
-            successAttempts = 0;
+            int successAttempts = 0;
             long size = file.length();
-            for (int j = 0; j < needAttemps; j++){
+            for (int j = 0; j < attempCount; j++){
                 if(size == file.length()) {
                     successAttempts++;
                     try {
@@ -104,7 +97,7 @@ public class FilesMonitor {
                 }
                 else break;
             }
-            if (successAttempts == needAttemps) return true;
+            if (successAttempts == attempCount) return true;
         }
         return false;
     }
@@ -121,6 +114,7 @@ public class FilesMonitor {
                     StandardWatchEventKinds.ENTRY_MODIFY);
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE,"IOException while creating of watcher occurred", e);
+            System.exit(1);
         }
         while (true) {
             WatchKey key = null;
@@ -128,6 +122,7 @@ public class FilesMonitor {
                 key = watchService.take();
             } catch (InterruptedException e) {
                 LOGGER.log(Level.SEVERE,"InterruptedException while taking of key from watcher occurred", e);
+                continue;
             }
             // Итерации для каждого события
             for (WatchEvent event : key.pollEvents()) {
@@ -137,26 +132,17 @@ public class FilesMonitor {
                         break;
                     case "ENTRY_CREATE":
                         LOGGER.info(event.context() + " is uploaded");
-
                         String fileName = event.context().toString();
                         String absolutePathToFile = rqDir.toAbsolutePath().toString() +
                                 File.separator + fileName;
-                        System.out.println(Paths.get(absolutePathToFile).getFileName());
-
-                        if(checkFileUpload(absolutePathToFile, 4, 10, 500)) {
-                            createAction(event, watchService);
-                            try {
-                                Files.delete(Paths.get(absolutePathToFile));
-                            } catch (IOException e) {
-                                LOGGER.log(Level.SEVERE, "Can't delete file");
-                            }
-                        }
-                        else moveFileToDlq(absolutePathToFile, watchService);
+                        Path createdFilePath = Paths.get(absolutePathToFile); //что за файл
+                        FileActions createFileAction = createAction(createdFilePath);
+                        actionMap.put(createdFilePath, createFileAction);
 
                         break;
                     case "ENTRY_DELETE":
                         LOGGER.info(event.context().toString() +
-                                " has been successfully deleted after conversion");
+                                " has been successfully deleted");
                         break;
                 }
             }
