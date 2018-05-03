@@ -25,19 +25,20 @@ public class ESBParser {
 
     private Node esbRoot;
 
-    private static final SimpleDateFormat csbTimeFormat = new SimpleDateFormat("yyyy-MM-dd'T'hh:mm:ss");
 
-    private static final byte RQUID_INDEX = 1;
-    private static final byte RQTM_INDEX = 3;
-    private static final byte SPNAME_INDEX = 5;
-    private static final byte SYSTEMID_INDEX = 7;
-    private static final byte METHOD_INDEX = 9;
-    private static final byte USERLOGIN_INDEX = 11;
-    private static final byte GETCLIENTPROFILE_INDEX = 13;
-    private static final byte ORGREC_INDEX = 1;
-    private static final byte ORGID_INDEX = 1;
-    private static final short ORGTYPE_INDEX = 1;
-    private static final short ORGNUM_INDEX = 3;
+        private static final SimpleDateFormat csbTimeFormat = new SimpleDateFormat("yyyy-MM-dd'T'hh:mm:ss");
+
+        private static final byte RQUID_INDEX = 1;
+        private static final byte RQTM_INDEX = 3;
+        private static final byte SPNAME_INDEX = 5;
+        private static final byte SYSTEMID_INDEX = 7;
+        private static final byte METHOD_INDEX = 9;
+        private static final byte USERLOGIN_INDEX = 11;
+        private static final byte GETCLIENTPROFILE_INDEX = 13;
+        private static final byte ORGREC_INDEX = 1;
+        private static final byte ORGID_INDEX = 1;
+        private static final short ORGTYPE_INDEX = 1;
+        private static final short ORGNUM_INDEX = 3;
 
     ESBParser(String esbFormatXML) throws IOException, SAXException, ParserConfigurationException {
         DocumentBuilder documentBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
@@ -45,7 +46,7 @@ public class ESBParser {
         esbRoot = document.getDocumentElement();
     }
 
-    public ESBObj parseESBXMLToESBObj () throws ParseException, ESBFormatException{
+    ESBObj parseESBXMLToESBObj() throws ParseException, ESBFormatException{
         NodeList nodes = esbRoot.getChildNodes();
         ESBObj result = null;
         try {
