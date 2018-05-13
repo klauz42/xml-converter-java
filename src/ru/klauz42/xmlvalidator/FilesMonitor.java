@@ -5,6 +5,7 @@ import org.xml.sax.SAXException;
 
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.TransformerException;
+import javax.xml.xpath.XPathExpressionException;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
@@ -17,9 +18,9 @@ import java.util.logging.Logger;
 
 public class FilesMonitor {
 
-    private Map<Path, FileActions> actionMap = new HashMap<>();
+    private Map<Path, FileAction> actionMap = new HashMap<>();
 
-    private enum FileActions { DELETE, MOVE, TRYAGAIN, STOP, OK, SOBIG}
+    private enum FileAction {  DELETED, MOVE, TRYAGAIN, STOP, OK, SOBIG, CONVERTED}
 
     private static final Logger LOGGER =
             Logger.getLogger(FilesMonitor.class.getName());
@@ -34,43 +35,81 @@ public class FilesMonitor {
         this.dlqDir = dlqDir;
     }
 
-    private FileActions createAction(Path inFile) {
+    private FileAction createAction(Path inFile) {
         //try в try, т.к. при исключении приложение должно закрыться,
         //файл перемещается в dlq, это действие обрабатывается во втором try-блоке
         String fileName = inFile.getFileName().toString();
-        FileActions action = null;
-        if (!checkFileUpload(inFile, 4, 10, 500)) return FileActions.SOBIG;
+        FileAction action = null;
+        if (!checkFileUpload(inFile, 4, 10, 500)) return FileAction.SOBIG;
         else try {
-            ESBParser.ESBObj o = new ESBParser(inFile.toAbsolutePath().toString()).parseESBXMLToESBObj();
-            CRMWriter writer = new CRMWriter(o,
-                    rsDir.toAbsolutePath() + File.separator + fileName.substring(0,
-                            fileName.length() - 4) + "Rs.xml");
-            writer.WriteXML();
+            ParserXML parserXML = new ParserXML(inFile.toAbsolutePath().toString());
+            parserXML.convertXML(rsDir.toAbsolutePath() + File.separator + fileName);
+//          ESBParser.ESBObj o = new ESBParser(inFile.toAbsolutePath().toString()).parseESBXMLToESBObj();
+
+//           CRMWriter writer = new CRMWriter(o,
+//                    rsDir.toAbsolutePath() + File.separator + fileName.substring(0,
+//                            fileName.length() - 4) + "Rs.xml");
+//           writer.WriteXML();
             LOGGER.fine(fileName + " has been successfully saved");
-            return FileActions.OK;
+            return FileAction.CONVERTED;
         } catch (SAXException e) {
             LOGGER.log(Level.SEVERE, "Uploaded file is not XML, SAXException occurred", e);
-            return FileActions.MOVE;
+            return FileAction.MOVE;
         } catch (ParseException |
                 IOException |
                 ParserConfigurationException |
                 TransformerException |
-                ESBParser.ESBFormatException e) {
+                ParserXML.FormatException |
+                XPathExpressionException e) {
             LOGGER.log(Level.SEVERE, e.getClass().getName() + " occurred", e);
-            return FileActions.MOVE;
+            return FileAction.MOVE;
         }
     }
 
-    //переместить файл в dlq и закрыть приложение
-    private FileActions moveFileToDlq(Path inFile) {
+    private void actionHandle () {
+        Map<Path, FileAction> tmp = new HashMap<>();
+
+        for (Map.Entry<Path, FileAction> entry : actionMap.entrySet()) {
+            FileAction value = entry.getValue();
+            switch (value) {
+                case CONVERTED:
+                case SOBIG:
+                    FileAction convAction = deleteFile(entry.getKey());
+                    tmp.put(entry.getKey(), convAction);
+                break;
+                case MOVE:
+                    FileAction moveAction = moveFileToDlq(entry.getKey());
+                    tmp.put(entry.getKey(), moveAction);
+                break;
+                case OK:
+                case DELETED:
+                    actionMap.remove(entry.getKey());
+                break;
+            }
+        }
+        actionMap.putAll(tmp);
+    }
+    //переместить файл в dlq
+    private FileAction moveFileToDlq(Path inFile) {
         Path dlqFile = Paths.get(dlqDir.toAbsolutePath() + File.separator + inFile.getFileName());
         try {
             Files.move(inFile, dlqFile, StandardCopyOption.REPLACE_EXISTING);
             LOGGER.info(inFile.getFileName() + " has been moved to dlq");
-            return FileActions.OK;
+            return FileAction.OK;
         } catch (IOException e) {
             LOGGER.log(Level.SEVERE, "IOException occurred while moving " + inFile.getFileName(), e);
-            return FileActions.MOVE;
+            return FileAction.MOVE;
+        }
+    }
+
+    private FileAction deleteFile(Path file) {
+        try {
+            Files.deleteIfExists(file);
+            LOGGER.info(file.getFileName() + " has been deleted");
+            return FileAction.DELETED;
+        } catch (IOException e) {
+            LOGGER.log(Level.SEVERE, "IOException occurred while deleting " + file.getFileName(), e);
+            return FileAction.OK;
         }
     }
 
@@ -117,6 +156,9 @@ public class FilesMonitor {
             System.exit(1);
         }
         while (true) {
+
+            actionHandle();
+
             WatchKey key = null;
             try {
                 key = watchService.take();
@@ -136,7 +178,7 @@ public class FilesMonitor {
                         String absolutePathToFile = rqDir.toAbsolutePath().toString() +
                                 File.separator + fileName;
                         Path createdFilePath = Paths.get(absolutePathToFile); //что за файл
-                        FileActions createFileAction = createAction(createdFilePath);
+                        FileAction createFileAction = createAction(createdFilePath);
                         actionMap.put(createdFilePath, createFileAction);
 
                         break;

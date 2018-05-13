@@ -38,7 +38,7 @@ public class ParserXML {
             Logger.getLogger(ParserXML.class.getName());
 
 
-    private void convertXML(String pathToSave) throws XPathExpressionException, ParseException, FileNotFoundException, TransformerException, ParserConfigurationException {
+    public void convertXML(String pathToSave) throws XPathExpressionException, ParseException, FileNotFoundException, TransformerException, ParserConfigurationException {
         switch (format){
             case ESB:
                 writeCRMObjToXML(parseESBXMLToCRMObject(), pathToSave);
@@ -50,7 +50,7 @@ public class ParserXML {
 
     }
 
-    private ParserXML(String inputXML) throws ParserConfigurationException, IOException, SAXException, FormatException {
+    public ParserXML(String inputXML) throws ParserConfigurationException, IOException, SAXException, FormatException {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
         DocumentBuilder builder = factory.newDocumentBuilder();
@@ -599,7 +599,7 @@ public class ParserXML {
         Element KIOInfo = doc.createElement("KIOInfo");
             Element TaxId_KIO = doc.createElement("TaxId");
             TaxId_TIN.appendChild(doc.createTextNode(esbOut.getTaxId_KIO()));
-            TINInfo.appendChild(TaxId_KIO);
+            KIOInfo.appendChild(TaxId_KIO);
         OrgInfo.appendChild(KIOInfo);
 
         Element EmployerCode = doc.createElement("EmployerCode");
@@ -980,8 +980,14 @@ public class ParserXML {
             for (ESBObjectOut.TeamInfo teamInfo : esbOut.TeamInfoList) {
                 Element TeamInfo = doc.createElement("TeamInfo");
 
-                    TeamInfo.appendChild(doc.createElement("UserLogin").appendChild(doc.createTextNode(teamInfo.getUserLogin())));
-                    TeamInfo.appendChild(doc.createElement("PrimaryFlg").appendChild(doc.createTextNode(teamInfo.getPrimaryFlg())));
+
+                    Element UserLogin = doc.createElement("UserLogin");
+                    UserLogin.appendChild(doc.createTextNode(teamInfo.getUserLogin()));
+                    TeamInfo.appendChild(UserLogin);
+
+                    Element PrimaryFlg = doc.createElement("PrimaryFlg");
+                    PrimaryFlg.appendChild(doc.createTextNode(teamInfo.getPrimaryFlg()));
+                    TeamInfo.appendChild(PrimaryFlg);
 
                 Element PersonInfo = doc.createElement("PersonInfo");
                     Element PersonName = doc.createElement("PersonName");
@@ -1012,13 +1018,21 @@ public class ParserXML {
 
                 PersonInfo.appendChild(ContactInfo);
 
-                PersonInfo.appendChild(doc.createElement("EmploymentHistory").appendChild(
-                        doc.createElement("JobTitle").appendChild(doc.createTextNode(teamInfo.getJobTitle()))
-                ));
+                Element EmploymentHistory = doc.createElement("EmploymentHistory");
+                    Element JobTitle = doc.createElement("JobTitle");
+                    JobTitle.appendChild(doc.createTextNode(teamInfo.getJobTitle()));
+                    EmploymentHistory.appendChild(JobTitle);
 
+
+                PersonName.appendChild(EmploymentHistory);
+
+                PersonInfo.appendChild(PersonName);
                 TeamInfo.appendChild(PersonInfo);
 
-                TeamInfo.appendChild(doc.createElement("SBRFAccountRole").appendChild(doc.createTextNode(teamInfo.getSBRFAccountRole())));
+                Element SBRFAccountRole = doc.createElement("SBRFAccountRole");
+                SBRFAccountRole.appendChild(doc.createTextNode(teamInfo.getSBRFAccountRole()));
+                TeamInfo.appendChild(SBRFAccountRole);
+
 
                 ListOfTeamInfo.appendChild(TeamInfo);
             }
